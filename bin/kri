@@ -171,6 +171,21 @@ cmd_path() {
   fi
 }
 
+# Open straight into the fullscreen display, optionally on a given hymn.
+# Summon rather than toggle: asking to present should never close a display
+# that is already up.
+cmd_present() {
+  local payload='{"fullscreen":true}'
+  if [[ $# -ge 1 ]]; then
+    need_songs
+    local resolved
+    resolved="$(resolve_song "$1")"
+    [[ -n $resolved ]] || die "no hymn numbered '$1'"
+    payload="{\"fullscreen\":true,\"song\":\"${resolved%%$'\t'*}\"}"
+  fi
+  omarchy-shell shell summon "$PLUGIN_ID" "$payload"
+}
+
 cmd_doctor() {
   echo "data dir   : $DATA_DIR"
   if [[ -f $SONGS ]]; then
@@ -243,6 +258,7 @@ kri — Kidung Reformed Injili
   kri dev                  Watch plugin sources and restart the shell on save
 
   kri open                 Toggle the overlay
+  kri present [<number>]   Open the fullscreen lyrics display
   kri play <number>        Play a hymn
   kri toggle | next | prev Playback control
 EOF
@@ -259,6 +275,7 @@ main() {
     install)  cmd_install "$@" ;;
     dev)      cmd_dev "$@" ;;
     open)     omarchy-shell shell toggle "$PLUGIN_ID" '{}' ;;
+    present)  cmd_present "$@" ;;
     play)     [[ $# -ge 1 ]] || die "usage: kri play <number>"; omarchy-shell kri play "$1" ;;
     toggle)   omarchy-shell kri toggle ;;
     next)     omarchy-shell kri next ;;

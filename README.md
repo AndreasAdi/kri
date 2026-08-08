@@ -24,6 +24,10 @@ warna setiap kali tema Omarchy diganti.
 - **Pencarian instan** atas nomor, judul, hymn tune, pengarang, dan seluruh lirik
 - **Mode karaoke** — bait yang sedang dinyanyikan disorot dan digulir otomatis,
   memakai timestamp per bait yang sudah tersedia di data GRII
+- **Layar penuh** — `F11` di dalam overlay, atau `kri present [nomor]` langsung.
+  Lirik memenuhi layar dengan ukuran yang bisa diatur, pencarian disembunyikan,
+  dan tombol huruf tidak lagi mengetik apa pun sehingga tampilan aman dari
+  tekanan tombol yang tak sengaja
 - **Widget bar** — kidung yang sedang diputar, dengan kontrol klik dan scroll
 - **Offline** — lirik selalu offline; audio tersimpan otomatis begitu diputar,
   atau borong sekaligus dengan `kri download --all`
@@ -57,9 +61,23 @@ o.bind("SUPER + SHIFT + ALT + K", "Kidung play/pause", "omarchy-shell kri toggle
 | `Ctrl+N` `Ctrl+P` | kidung berikutnya / sebelumnya |
 | `Ctrl+K` | ikuti audio (auto-scroll) on/off |
 | `Ctrl+U` / `Backspace` | hapus pencarian |
-| `Esc` | kosongkan pencarian, lalu tutup |
+| `F11` / `Ctrl+F` | layar penuh on/off |
+| `Esc` | keluar layar penuh → kosongkan pencarian → tutup |
 
 Klik satu bait untuk melompat ke bagian itu di audio.
+
+Di **layar penuh** pencarian tidak aktif, jadi tombol tak perlu `Ctrl`:
+
+| Tombol | Aksi |
+|---|---|
+| `Space` | putar / jeda |
+| `←` `→` `↑` `↓` | gulir lirik |
+| `Ctrl+←` `Ctrl+→` | lompat bait (seek audio) |
+| `+` `−` | perbesar / perkecil lirik |
+| `0` | kembalikan ukuran |
+| `F11` / `Esc` | keluar dari layar penuh |
+
+Tombol lain diabaikan — tampilan tidak bisa terganggu ketikan yang tak sengaja.
 
 ## CLI
 
@@ -70,6 +88,7 @@ kri download 001 044e    # cache lagu tertentu
 kri path 24              # path lokal, atau URL kalau belum di-cache
 kri doctor               # status cache, plugin, dan shell
 kri dev                  # pantau sumber plugin, restart shell tiap disimpan
+kri present [nomor]      # buka langsung ke tampilan layar penuh
 kri open | play <no> | toggle | next | prev
 ```
 

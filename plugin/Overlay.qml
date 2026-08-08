@@ -24,6 +24,14 @@ Item {
   // Follow the audio: highlighted stanza scrolls itself into view.
   property bool followAudio: true
 
+  // Presentation mode: lyrics fill the screen, search is out of the way, and
+  // letter keys stop filtering so nothing can be typed into the display by
+  // accident. Toggled with F11.
+  property bool fullscreen: false
+  // Lyric size multiplier, adjustable with +/- so one setting can suit both a
+  // laptop panel and a projector.
+  property real lyricScale: 1.0
+
   readonly property var songs: service ? service.songs : []
   property var results: []
   readonly property var previewSong: selectedIndex >= 0 && selectedIndex < results.length ? results[selectedIndex] : null
@@ -43,19 +51,54 @@ Item {
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
 
-  property int contentMargin: Style.spacing.panelPadding
-  property int cardWidth: Math.min(Style.space(1040), panel.width - Style.gapsOut * 2)
-  property int cardHeight: Math.min(Style.space(680), panel.height - Style.gapsOut * 2)
-  property int sidebarWidth: Math.min(Style.space(330), Math.round(cardWidth * 0.34))
+  property int contentMargin: fullscreen ? Style.spacing.panelPadding * 2 : Style.spacing.panelPadding
+  property int cardWidth: fullscreen ? panel.width : Math.min(Style.space(1040), panel.width - Style.gapsOut * 2)
+  property int cardHeight: fullscreen ? panel.height : Math.min(Style.space(680), panel.height - Style.gapsOut * 2)
+  property int sidebarWidth: fullscreen ? 0 : Math.min(Style.space(330), Math.round(cardWidth * 0.34))
   property int rowHeight: Math.max(Style.space(38), Style.font.subtitle * 2.6)
 
+  // Omarchy's bar sits on the same layer and keeps drawing over us, so keep the
+  // top of a fullscreen display clear of it.
+  readonly property int topInset: fullscreen ? Style.bar.sizeHorizontal + Style.spacing.md : 0
+  readonly property int lyricFontSize: Math.round((fullscreen ? Style.font.displayLarge : Style.font.title) * lyricScale)
+  readonly property int headingFontSize: Math.round(fullscreen ? Style.font.display : Style.font.heading)
+  // Cap the measure on a wide screen: full-width lines are hard to track back
+  // to. The longest KRI line runs ~58 characters, and the font is monospace at
+  // roughly 0.6em advance — so ~38em of text plus the stanza-number gutter and
+  // padding. Sized to fit that line without wrapping. Windowed mode is already
+  // narrow enough to leave alone.
+  readonly property int lyricColumnWidth: lyricFontSize * 40 + Style.space(24)
+
+  function lyricInset(available) {
+    return fullscreen ? Math.max(0, Math.round((available - lyricColumnWidth) / 2)) : 0
+  }
+
+  function scaleLyrics(delta) {
+    root.lyricScale = Math.max(0.6, Math.min(3.0, root.lyricScale + delta))
+  }
+
+  // Payload: {"fullscreen": true, "song": "024"}. The mode is not sticky — the
+  // hotkey always lands on the searchable view, `kri present` always on the
+  // fullscreen one.
   function open(payloadJson) {
+    var payload = {}
+    try {
+      if (payloadJson) payload = JSON.parse(payloadJson) || {}
+    } catch (e) {
+      payload = {}
+    }
+
     root.opened = true
     root.filterText = ""
     root.followAudio = true
+    root.fullscreen = payload.fullscreen === true
     root.rebuild()
-    // Land on the playing hymn when there is one, so reopening resumes context.
-    if (service && service.currentSong) root.selectNumber(service.currentSong.no)
+
+    // Land on the requested hymn, else the playing one, so reopening resumes
+    // context instead of dumping you back at hymn 001.
+    if (payload.song) root.selectNumber(Songs.canonicalNumber(payload.song))
+    else if (service && service.currentSong) root.selectNumber(service.currentSong.no)
+
     Qt.callLater(function () { keyCatcher.forceActiveFocus() })
   }
 
@@ -90,8 +133,9 @@ Item {
   }
 
   function selectNumber(number) {
+    var wanted = Songs.canonicalNumber(number)
     for (var i = 0; i < root.results.length; i++) {
-      if (root.results[i].no === number) {
+      if (root.results[i].no.toLowerCase() === wanted) {
         root.selectedIndex = i
         resultList.positionViewAtIndex(i, ListView.Contain)
         return
@@ -127,7 +171,9 @@ Item {
     function onCurrentPartChanged() {
       if (!root.opened || !root.followAudio || !root.previewIsPlaying) return
       var part = root.service.currentPart
-      if (part > 0) lyricList.positionViewAtIndex(part - 1, ListView.Contain)
+      // Centred when presenting so the sung stanza sits at eye level; merely
+      // scrolled into view when the window is small.
+      if (part > 0) lyricList.positionViewAtIndex(part - 1, root.fullscreen ? ListView.Center : ListView.Contain)
     }
     function onSongActivated(index) {
       if (!root.opened) return
@@ -160,11 +206,14 @@ Item {
       id: card
       width: root.cardWidth
       height: root.cardHeight
-      radius: root.cornerRadius
+      // Edge-to-edge and opaque when presenting: no rounded corners, no border,
+      // nothing of the desktop showing through behind the lyrics.
+      radius: root.fullscreen ? 0 : root.cornerRadius
       anchors.centerIn: parent
       color: root.background
-      borderSpec: root.borderSpec
+      borderSpec: root.fullscreen ? Border.none() : root.borderSpec
       padding: root.contentMargin
+      topPadding: root.contentMargin + root.topInset
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
@@ -176,18 +225,21 @@ Item {
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function (event) {
           var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+          // In fullscreen there is no search field to type into, so transport
+          // and sizing keys drop their Ctrl requirement.
+          var bare = root.fullscreen || ctrl
 
-          if (event.key === Qt.Key_Escape) {
-            if (root.filterText) root.setFilter("")
+          // ---- both modes ----
+          if (event.key === Qt.Key_F11) {
+            root.fullscreen = !root.fullscreen
+          } else if (ctrl && event.key === Qt.Key_F) {
+            root.fullscreen = !root.fullscreen
+          } else if (event.key === Qt.Key_Escape) {
+            // Escape peels one layer at a time: fullscreen, then the query,
+            // then the overlay itself.
+            if (root.fullscreen) root.fullscreen = false
+            else if (root.filterText) root.setFilter("")
             else root.dismiss()
-          } else if (Util.editsFilter(event, root.filterText)) {
-            root.setFilter(Util.editedFilter(event, root.filterText))
-          } else if (event.key === Qt.Key_Up) {
-            root.moveSelection(-1)
-          } else if (event.key === Qt.Key_Down) {
-            root.moveSelection(1)
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            root.playSelected()
           } else if (ctrl && event.key === Qt.Key_Space) {
             if (root.service) root.service.togglePlayback()
           } else if (ctrl && event.key === Qt.Key_N) {
@@ -200,10 +252,42 @@ Item {
             root.stepStanza(1)
           } else if (ctrl && event.key === Qt.Key_Left) {
             root.stepStanza(-1)
+          } else if (bare && (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal)) {
+            root.scaleLyrics(0.1)
+          } else if (bare && event.key === Qt.Key_Minus) {
+            root.scaleLyrics(-0.1)
+          } else if (bare && event.key === Qt.Key_0) {
+            root.lyricScale = 1.0
           } else if (event.key === Qt.Key_PageDown) {
             lyricList.flick(0, -1200)
           } else if (event.key === Qt.Key_PageUp) {
             lyricList.flick(0, 1200)
+
+          // ---- fullscreen: presentation keys ----
+          } else if (root.fullscreen) {
+            if (event.key === Qt.Key_Down || event.key === Qt.Key_Right) {
+              lyricList.flick(0, -700)
+            } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
+              lyricList.flick(0, 700)
+            } else if (event.key === Qt.Key_Space) {
+              if (root.service) root.service.togglePlayback()
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+              root.playSelected()
+            } else {
+              // Swallow everything else so stray keys cannot disturb a display.
+              event.accepted = true
+              return
+            }
+
+          // ---- windowed: search and browse ----
+          } else if (Util.editsFilter(event, root.filterText)) {
+            root.setFilter(Util.editedFilter(event, root.filterText))
+          } else if (event.key === Qt.Key_Up) {
+            root.moveSelection(-1)
+          } else if (event.key === Qt.Key_Down) {
+            root.moveSelection(1)
+          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            root.playSelected()
           } else if (event.text && event.text.length === 1
                      && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127) {
             root.setFilter(root.filterText + event.text)
@@ -225,6 +309,7 @@ Item {
         Item {
           id: sidebar
           width: root.sidebarWidth
+          visible: !root.fullscreen
           anchors.top: parent.top
           anchors.bottom: parent.bottom
           anchors.left: parent.left
@@ -354,7 +439,9 @@ Item {
 
         Rectangle {
           id: divider
-          width: Math.max(1, Style.space(1))
+          // Zero-width rather than invisible: the lyrics pane anchors to its
+          // right edge, so it has to collapse instead of just stop painting.
+          width: root.fullscreen ? 0 : Math.max(1, Style.space(1))
           anchors.top: parent.top
           anchors.bottom: parent.bottom
           anchors.left: sidebar.right
@@ -367,7 +454,7 @@ Item {
           anchors.top: parent.top
           anchors.bottom: parent.bottom
           anchors.left: divider.right
-          anchors.leftMargin: Style.spacing.panelGap
+          anchors.leftMargin: root.fullscreen ? 0 : Style.spacing.panelGap
           anchors.right: parent.right
 
           Column {
@@ -375,6 +462,8 @@ Item {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.leftMargin: root.lyricInset(parent.width)
+            anchors.rightMargin: root.lyricInset(parent.width)
             spacing: Style.space(2)
             visible: root.previewSong !== null
 
@@ -382,7 +471,7 @@ Item {
               text: root.previewSong ? "KRI " + root.previewSong.no + " · " + root.previewSong.title : ""
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: Style.font.heading
+              font.pixelSize: root.headingFontSize
               font.bold: true
               elide: Text.ElideRight
               width: parent.width
@@ -413,6 +502,8 @@ Item {
             anchors.topMargin: Style.spacing.panelGap
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.leftMargin: root.lyricInset(parent.width)
+            anchors.rightMargin: root.lyricInset(parent.width)
             anchors.bottom: playerBar.top
             anchors.bottomMargin: Style.spacing.panelGap
             clip: true
@@ -441,12 +532,12 @@ Item {
                 anchors.topMargin: Style.spacing.lg
                 anchors.left: parent.left
                 anchors.leftMargin: Style.spacing.lg
-                width: Style.space(22)
+                width: Math.max(Style.space(22), root.lyricFontSize * 1.4)
                 text: stanza.index + 1
                 color: stanza.active ? root.selectedText : root.foreground
                 opacity: stanza.active ? 0.85 : 0.35
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fullscreen ? Style.font.title : Style.font.caption
               }
 
               Column {
@@ -466,9 +557,11 @@ Item {
                     required property var modelData
                     text: modelData
                     color: stanza.active ? root.selectedText : root.foreground
-                    opacity: stanza.active ? 1.0 : 0.75
+                    // Presenting dims the inactive stanzas harder, so the one
+                    // being sung reads from across a room.
+                    opacity: stanza.active ? 1.0 : (root.fullscreen ? 0.4 : 0.75)
                     font.family: root.fontFamily
-                    font.pixelSize: Style.font.title
+                    font.pixelSize: root.lyricFontSize
                     wrapMode: Text.WordWrap
                     width: stanzaLines.width
                     visible: text !== ""
@@ -543,7 +636,7 @@ Item {
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 elide: Text.ElideRight
-                width: Math.max(0, parent.width - followLabel.width - Style.spacing.lg)
+                width: Math.max(0, parent.width - followLabel.width - presentLabel.width - Style.spacing.lg * 2)
               }
 
               Text {
@@ -561,11 +654,29 @@ Item {
                   onClicked: root.followAudio = !root.followAudio
                 }
               }
+
+              Text {
+                id: presentLabel
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.fullscreen ? "󰊓 layar penuh" : "󰊔 layar penuh"
+                color: root.foreground
+                opacity: root.fullscreen ? 0.8 : 0.35
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.fullscreen = !root.fullscreen
+                }
+              }
             }
 
             Text {
               width: parent.width
-              text: "↑↓ pilih · Enter putar · Ctrl+Space jeda · Ctrl+←/→ bait · Ctrl+N/P lagu · Ctrl+K ikuti · Esc tutup"
+              text: root.fullscreen
+                ? "Space jeda · ←/→ gulir · Ctrl+←/→ bait · +/− ukuran · 0 reset · F11 keluar layar penuh"
+                : "↑↓ pilih · Enter putar · Ctrl+Space jeda · Ctrl+←/→ bait · Ctrl+N/P lagu · Ctrl+K ikuti · F11 layar penuh · Esc tutup"
               color: root.foreground
               opacity: 0.35
               font.family: root.fontFamily
