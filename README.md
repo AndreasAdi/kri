@@ -69,7 +69,7 @@ kri download --all       # cache seluruh audio (~1,6 GB, 272 lagu)
 kri download 001 044e    # cache lagu tertentu
 kri path 24              # path lokal, atau URL kalau belum di-cache
 kri doctor               # status cache, plugin, dan shell
-kri dev                  # hot-reload plugin saat sumbernya diedit
+kri dev                  # pantau sumber plugin, restart shell tiap disimpan
 kri open | play <no> | toggle | next | prev
 ```
 
@@ -102,6 +102,14 @@ Indonesia) dan ada satu `238A`. 272 kidung punya audio, 270 punya timestamp bait
 hasil fetch mencurigakan, jadi upstream yang rusak tidak bisa merusak data lokal.
 Unduhan audio juga divalidasi (tipe MIME + ukuran) karena sebagian URL upstream
 mengembalikan stub — `KRI-333.mp3` misalnya hanya 94 byte.
+
+### Catatan pengembangan
+
+Sumbernya ada di repo ini; `~/.config/omarchy/plugins/andreas.kri` hanyalah
+symlink ke `plugin/`. Penemuan plugin mengikuti symlink, tetapi watcher inotify
+milik Omarchy tidak — dan `rescanPlugins` pun tidak cukup karena QML masih
+dilayani dari component cache Qt dan singleton `Service.qml` hanya dibuat sekali.
+Karena itu `kri dev` me-restart shell (~2 detik) setiap kali file disimpan.
 
 ## Catatan
 

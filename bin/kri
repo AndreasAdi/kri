@@ -215,14 +215,18 @@ cmd_install() {
   echo "kri: now run 'omarchy plugin enable $PLUGIN_ID'"
 }
 
-# Plugin discovery follows the symlink, but the shell's inotify watcher does
-# not recurse into it — so hot reload needs a nudge from our side.
+# Omarchy's own inotify watcher does not recurse into the symlinked plugin dir,
+# so edits here go unnoticed. `rescanPlugins` is not enough either: it re-reads
+# manifests but serves QML from Qt's component cache, and the service singleton
+# is only ever constructed once. Restarting the shell is the reliable reload.
 cmd_dev() {
   command -v inotifywait >/dev/null || die "inotify-tools not installed"
-  echo "kri: watching $ROOT/plugin — saving a file reloads the shell plugin"
+  echo "kri: watching $ROOT/plugin — saving a file restarts omarchy-shell (~2s)"
   while inotifywait -qq -r -e close_write,create,delete,move "$ROOT/plugin"; do
-    omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
-    echo "kri: reloaded $(date +%H:%M:%S)"
+    # Coalesce editor write bursts (swap files, atomic rename) into one restart.
+    while inotifywait -qq -t 1 -r -e close_write,create,delete,move "$ROOT/plugin"; do :; done
+    omarchy-restart-shell >/dev/null 2>&1 || true
+    echo "kri: shell restarted $(date +%H:%M:%S)"
   done
 }
 
@@ -236,7 +240,7 @@ kri — Kidung Reformed Injili
   kri path <number>        Local file if cached, otherwise the streaming URL
   kri doctor               Report cache, plugin and shell status
   kri install              Link the plugin into Omarchy and kri into ~/.local/bin
-  kri dev                  Watch plugin sources and hot-reload the shell
+  kri dev                  Watch plugin sources and restart the shell on save
 
   kri open                 Toggle the overlay
   kri play <number>        Play a hymn
