@@ -1,0 +1,267 @@
+#!/usr/bin/env bash
+# kri — Kidung Reformed Injili on the command line.
+#
+# Owns everything the QML plugin is bad at: fetching the hymnal, caching audio,
+# and reporting where a track lives. The plugin shells out to `kri path` and
+# `kri download`; everything else here is for humans.
+
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L $SOURCE ]]; do
+  SOURCE="$(readlink -f "$SOURCE")"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/kri"
+AUDIO_DIR="$DATA_DIR/audio"
+SONGS="$DATA_DIR/songs.json"
+PLUGIN_ID="andreas.kri"
+PLUGIN_LINK="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
+
+# A truncated or HTML error response is always well under this.
+MIN_AUDIO_BYTES=100000
+
+die() { echo "kri: $*" >&2; exit 1; }
+
+# Menu rows run these commands with no terminal attached, so long jobs report
+# themselves on the desktop instead of into the void.
+headless() { [[ ! -t 1 ]]; }
+notify() {
+  headless || return 0
+  command -v notify-send >/dev/null && notify-send -a "Kidung Reformed Injili" "$1" "${2:-}" || true
+}
+
+need_songs() {
+  [[ -f $SONGS ]] || die "no hymnal cached yet — run 'kri sync' first"
+}
+
+# Hymn numbers are not plain integers: 44 ships as "044e"/"044i" (English and
+# Indonesian settings) and there is a "238A". Canonicalization therefore lives in
+# Python, matched case-insensitively against the real hymnal.
+# Prints: <canonical number><TAB><media url>, or nothing when unknown.
+resolve_song() {
+  python3 - "$SONGS" "$1" <<'PY'
+import json, re, sys
+songs = json.load(open(sys.argv[1], encoding="utf-8"))
+raw = sys.argv[2].strip()
+match = re.fullmatch(r"(\d+)([A-Za-z]*)", raw)
+wanted = ("%03d%s" % (int(match.group(1)), match.group(2))).lower() if match else raw.lower()
+for song in songs:
+    if song["no"].lower() == wanted:
+        print("%s\t%s" % (song["no"], song["media"]))
+        break
+PY
+}
+
+audio_file() { printf '%s/KRI-%s.mp3\n' "$AUDIO_DIR" "$1"; }
+
+cmd_sync() {
+  mkdir -p "$DATA_DIR"
+  local output
+  if output="$(python3 "$ROOT/lib/sync.py" "$DATA_DIR" 2>&1)"; then
+    echo "$output"
+    notify "Data kidung diperbarui" "${output#kri: }"
+  else
+    echo "$output" >&2
+    notify "Sinkron gagal" "${output#kri: }"
+    return 1
+  fi
+}
+
+# Fetch one hymn's audio into the cache. Idempotent: an already-valid file is
+# left alone, a partial one is resumed.
+download_one() {
+  local resolved number url target tmp size mime
+  resolved="$(resolve_song "$1")"
+  if [[ -z $resolved ]]; then
+    echo "kri: no hymn numbered '$1'" >&2
+    return 1
+  fi
+  number="${resolved%%$'\t'*}"
+  url="${resolved#*$'\t'}"
+  target="$(audio_file "$number")"
+
+  if [[ -f $target ]] && (( $(stat -c%s "$target") >= MIN_AUDIO_BYTES )); then
+    return 0
+  fi
+
+  if [[ -z $url ]]; then
+    echo "kri: KRI-$number has no audio upstream" >&2
+    return 1
+  fi
+
+  mkdir -p "$AUDIO_DIR"
+  tmp="$target.part"
+  if ! curl -fsSL -C - -o "$tmp" "$url"; then
+    rm -f "$tmp"
+    echo "kri: KRI-$number download failed" >&2
+    return 1
+  fi
+
+  # Upstream serves stub responses for some numbers (KRI-333 is 94 bytes of
+  # nothing), so a 200 is not proof we got a hymn.
+  size="$(stat -c%s "$tmp" 2>/dev/null || echo 0)"
+  mime="$(file -b --mime-type "$tmp" 2>/dev/null || echo unknown)"
+  if (( size < MIN_AUDIO_BYTES )) || [[ $mime != audio/* ]]; then
+    rm -f "$tmp"
+    echo "kri: KRI-$number is not usable audio ($size bytes, $mime) — skipped" >&2
+    return 1
+  fi
+
+  mv -f "$tmp" "$target"
+  return 0
+}
+
+cmd_download() {
+  need_songs
+  local -a numbers=()
+
+  if [[ $# -eq 0 || $1 == --missing || $1 == --all ]]; then
+    mapfile -t numbers < <(python3 - "$SONGS" "$AUDIO_DIR" "${1:---missing}" <<'PY'
+import json, os, sys
+songs = json.load(open(sys.argv[1], encoding="utf-8"))
+audio_dir, mode = sys.argv[2], sys.argv[3]
+for song in songs:
+    if not song["media"]:
+        continue
+    if mode == "--missing":
+        path = os.path.join(audio_dir, "KRI-%s.mp3" % song["no"])
+        if os.path.exists(path) and os.path.getsize(path) >= 100000:
+            continue
+    print(song["no"])
+PY
+)
+  else
+    numbers=("$@")
+  fi
+
+  local total=${#numbers[@]} done=0 failed=0 index=0
+  if (( total == 0 )); then
+    echo "kri: audio cache already complete"
+    return 0
+  fi
+
+  echo "kri: downloading $total file(s) — roughly $(( total * 6 )) MB"
+  notify "Mengunduh $total lagu" "Kira-kira $(( total * 6 )) MB"
+  for number in "${numbers[@]}"; do
+    index=$((index + 1))
+    headless || printf '\r  [%d/%d] KRI-%s ' "$index" "$total" "$number"
+    if download_one "$number"; then done=$((done + 1)); else failed=$((failed + 1)); fi
+  done
+  headless || printf '\r%*s\r' 40 ''
+  echo "kri: $done cached, $failed skipped"
+  notify "Unduhan selesai" "$done tersimpan, $failed dilewati"
+}
+
+# The plugin calls this to decide between a local file and streaming.
+cmd_path() {
+  need_songs
+  [[ $# -ge 1 ]] || die "usage: kri path <number>"
+  local resolved number url target
+  resolved="$(resolve_song "$1")"
+  [[ -n $resolved ]] || die "no hymn numbered '$1'"
+  number="${resolved%%$'\t'*}"
+  url="${resolved#*$'\t'}"
+  target="$(audio_file "$number")"
+  if [[ -f $target ]] && (( $(stat -c%s "$target") >= MIN_AUDIO_BYTES )); then
+    echo "$target"
+  else
+    echo "$url"
+  fi
+}
+
+cmd_doctor() {
+  echo "data dir   : $DATA_DIR"
+  if [[ -f $SONGS ]]; then
+    python3 - "$SONGS" "$AUDIO_DIR" <<'PY'
+import json, os, sys
+songs = json.load(open(sys.argv[1], encoding="utf-8"))
+audio_dir = sys.argv[2]
+with_audio = [s for s in songs if s["media"]]
+cached, size = 0, 0
+for song in with_audio:
+    path = os.path.join(audio_dir, "KRI-%s.mp3" % song["no"])
+    if os.path.exists(path):
+        cached += 1
+        size += os.path.getsize(path)
+print("hymnal     : %d songs" % len(songs))
+print("with audio : %d upstream" % len(with_audio))
+print("with cues  : %d karaoke-ready" % sum(1 for s in songs if s["cues"]))
+print("cached     : %d/%d (%.1f GB)" % (cached, len(with_audio), size / 1e9))
+PY
+  else
+    echo "hymnal     : not synced — run 'kri sync'"
+  fi
+
+  if [[ -e $PLUGIN_LINK ]]; then
+    echo "plugin     : installed -> $(readlink -f "$PLUGIN_LINK")"
+  else
+    echo "plugin     : not installed — run 'kri install'"
+  fi
+  if omarchy-shell shell ping >/dev/null 2>&1; then
+    echo "shell      : running"
+  else
+    echo "shell      : not reachable"
+  fi
+}
+
+cmd_install() {
+  mkdir -p "$(dirname "$PLUGIN_LINK")" "$HOME/.local/bin"
+  ln -sfn "$ROOT/plugin" "$PLUGIN_LINK"
+  ln -sfn "$ROOT/bin/kri" "$HOME/.local/bin/kri"
+  echo "kri: linked $PLUGIN_LINK -> $ROOT/plugin"
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  echo "kri: now run 'omarchy plugin enable $PLUGIN_ID'"
+}
+
+# Plugin discovery follows the symlink, but the shell's inotify watcher does
+# not recurse into it — so hot reload needs a nudge from our side.
+cmd_dev() {
+  command -v inotifywait >/dev/null || die "inotify-tools not installed"
+  echo "kri: watching $ROOT/plugin — saving a file reloads the shell plugin"
+  while inotifywait -qq -r -e close_write,create,delete,move "$ROOT/plugin"; do
+    omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+    echo "kri: reloaded $(date +%H:%M:%S)"
+  done
+}
+
+cmd_help() {
+  cat <<'EOF'
+kri — Kidung Reformed Injili
+
+  kri sync                 Fetch the hymnal (333 songs) into the local cache
+  kri download [--all]     Cache audio; no args or --missing fills the gaps
+  kri download 001 002     Cache specific hymns
+  kri path <number>        Local file if cached, otherwise the streaming URL
+  kri doctor               Report cache, plugin and shell status
+  kri install              Link the plugin into Omarchy and kri into ~/.local/bin
+  kri dev                  Watch plugin sources and hot-reload the shell
+
+  kri open                 Toggle the overlay
+  kri play <number>        Play a hymn
+  kri toggle | next | prev Playback control
+EOF
+}
+
+main() {
+  local command="${1:-help}"
+  shift || true
+  case "$command" in
+    sync)     cmd_sync "$@" ;;
+    download) cmd_download "$@" ;;
+    path)     cmd_path "$@" ;;
+    doctor)   cmd_doctor "$@" ;;
+    install)  cmd_install "$@" ;;
+    dev)      cmd_dev "$@" ;;
+    open)     omarchy-shell shell toggle "$PLUGIN_ID" '{}' ;;
+    play)     [[ $# -ge 1 ]] || die "usage: kri play <number>"; omarchy-shell kri play "$1" ;;
+    toggle)   omarchy-shell kri toggle ;;
+    next)     omarchy-shell kri next ;;
+    prev)     omarchy-shell kri prev ;;
+    help|-h|--help) cmd_help ;;
+    *)        die "unknown command '$command' — try 'kri help'" ;;
+  esac
+}
+
+main "$@"

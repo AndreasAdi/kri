@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "andreas.kri",
+  "name": "Kidung Reformed Injili",
+  "version": "1.0.0",
+  "author": "Andreas",
+  "description": "Search, read and sing along to the 333 KRI hymns, offline",
+  "kinds": [
+    "service",
+    "overlay",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "overlay": "Overlay.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Kidung (KRI)",
+    "description": "Now-playing hymn with playback controls",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
