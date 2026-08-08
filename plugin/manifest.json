@@ -21,6 +21,26 @@
     "description": "Now-playing hymn with playback controls",
     "category": "Media",
     "allowMultiple": false,
-    "defaultSection": "right"
+    "defaultSection": "right",
+    "defaults": {
+      "titleDisplay": "elide",
+      "maxLabelWidth": 240
+    },
+    "schema": [
+      {
+        "key": "titleDisplay",
+        "type": "string",
+        "label": "Title display",
+        "description": "\"elide\" shows the number plus a truncated title; \"number\" shows the hymn number only. Either way the full title is in the tooltip.",
+        "defaultValue": "elide"
+      },
+      {
+        "key": "maxLabelWidth",
+        "type": "number",
+        "label": "Max title width",
+        "description": "Pixels before the title is truncated. The hymn number is never truncated. 240 fits about 33 characters, showing 97% of hymn titles in full.",
+        "defaultValue": 240
+      }
+    ]
   }
 }

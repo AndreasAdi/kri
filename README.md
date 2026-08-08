@@ -97,6 +97,24 @@ kri repeat [on|off]      # ulang lagu; tanpa argumen = toggle
 kri open | play <no> | toggle | next | prev
 ```
 
+## Mengatur widget bar
+
+Judul yang kepanjangan **dipotong**, tidak digulir — 36% judul kidung melebihi
+lebar bar, dan sebagian besar hanya kelebihan dua–tiga karakter, jadi animasi
+gulir akan bergerak terus untuk mengungkap nyaris tidak ada apa-apa. Judul
+penuh ada di tooltip. Nomor kidung tidak pernah ikut terpotong.
+
+```bash
+omarchy bar set andreas.kri titleDisplay number   # nomor saja: 󰎇 012
+omarchy bar set andreas.kri titleDisplay elide    # default: 󰎇 012 Allah Baik
+omarchy bar set andreas.kri maxLabelWidth 140     # potong lebih awal
+omarchy bar set andreas.kri maxLabelWidth 300     # semua judul tampil utuh
+```
+
+Default `maxLabelWidth` 240px memuat ~33 karakter — 324 dari 335 judul (97%)
+tampil utuh. Perubahan langsung terlihat tanpa restart shell. Bar vertikal
+otomatis jadi nomor-saja.
+
 ## Arsitektur
 
 ```
