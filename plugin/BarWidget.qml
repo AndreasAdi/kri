@@ -44,6 +44,15 @@ BarWidget {
       }
     }
 
+    Text {
+      anchors.verticalCenter: parent.verticalCenter
+      visible: root.service ? root.service.repeatSong : false
+      text: "󰑖"
+      color: root.bar.barForeground
+      font.family: root.bar.fontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+
     Item {
       id: clip
       width: Math.min(root.maxLabelWidth, label.implicitWidth)
@@ -99,6 +108,7 @@ BarWidget {
     onEntered: if (root.bar) root.bar.showTooltip(root, root.hasTrack
       ? "KRI " + root.song.no + " · " + root.song.title + root.stanzaLabel
         + "  (" + Songs.formatTime(root.service.position) + " / " + Songs.formatTime(root.service.duration) + ")"
+        + (root.service.repeatSong ? "  · diulang" : "")
       : "")
     onExited: if (root.bar) root.bar.hideTooltip(root)
   }

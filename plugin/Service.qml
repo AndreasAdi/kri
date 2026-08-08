@@ -36,6 +36,10 @@ Item {
   // itself as you use it rather than demanding a 1.6 GB download up front.
   property bool cacheOnPlay: true
 
+  // Loop the current hymn — for learning a tune, or holding one hymn during a
+  // service. It is a mode, not a per-track flag: switching hymns keeps looping.
+  property bool repeatSong: false
+
   property string lastError: ""
 
   // `kri install` puts the CLI in ~/.local/bin, but a login shell spawned from
@@ -78,6 +82,10 @@ Item {
     player.stop()
   }
 
+  function toggleRepeat() {
+    root.repeatSong = !root.repeatSong
+  }
+
   function next() {
     if (songs.length === 0) return
     playIndex(currentIndex < 0 ? 0 : (currentIndex + 1) % songs.length)
@@ -103,6 +111,7 @@ Item {
     return (playing ? "playing" : "paused") + " KRI " + currentSong.no + " " + currentSong.title
       + " [" + Songs.formatTime(player.position) + "/" + Songs.formatTime(player.duration) + "]"
       + (hasCues ? " bait " + currentPart : "")
+      + (repeatSong ? " repeat" : "")
   }
 
   FileView {
@@ -148,6 +157,9 @@ Item {
   MediaPlayer {
     id: player
     audioOutput: AudioOutput { id: output }
+    // Native looping: seamless, and position resets to 0 on each pass so the
+    // karaoke highlight restarts at the first stanza on its own.
+    loops: root.repeatSong ? MediaPlayer.Infinite : 1
     onErrorOccurred: function(error, errorString) {
       root.lastError = errorString
     }
@@ -189,6 +201,20 @@ Item {
     function stop(): string {
       root.stop()
       return "stopped"
+    }
+
+    function repeat(): string {
+      root.toggleRepeat()
+      return root.repeatSong ? "repeat on" : "repeat off"
+    }
+
+    // Separate from repeat() because IPC arguments are mandatory: a declared
+    // parameter would make the bare toggle above impossible to call.
+    // Explicit set keeps scripts idempotent without reading the state back.
+    function repeatSet(mode: string): string {
+      var wanted = String(mode || "").trim().toLowerCase()
+      root.repeatSong = (wanted === "on" || wanted === "true" || wanted === "1")
+      return root.repeatSong ? "repeat on" : "repeat off"
     }
 
     function status(): string {

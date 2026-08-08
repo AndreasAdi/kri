@@ -261,6 +261,7 @@ kri — Kidung Reformed Injili
   kri present [<number>]   Open the fullscreen lyrics display
   kri play <number>        Play a hymn
   kri toggle | next | prev Playback control
+  kri repeat [on|off]      Loop the current hymn; bare call toggles
 EOF
 }
 
@@ -278,6 +279,9 @@ main() {
     present)  cmd_present "$@" ;;
     play)     [[ $# -ge 1 ]] || die "usage: kri play <number>"; omarchy-shell kri play "$1" ;;
     toggle)   omarchy-shell kri toggle ;;
+    repeat)
+      if [[ $# -ge 1 ]]; then omarchy-shell kri repeatSet "$1"
+      else omarchy-shell kri repeat; fi ;;
     next)     omarchy-shell kri next ;;
     prev)     omarchy-shell kri prev ;;
     help|-h|--help) cmd_help ;;

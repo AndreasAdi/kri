@@ -28,6 +28,8 @@ warna setiap kali tema Omarchy diganti.
   Lirik memenuhi layar dengan ukuran yang bisa diatur, pencarian disembunyikan,
   dan tombol huruf tidak lagi mengetik apa pun sehingga tampilan aman dari
   tekanan tombol yang tak sengaja
+- **Ulang lagu** — `Ctrl+R` untuk melooping kidung yang sedang diputar; berguna
+  untuk menghafal nada atau menahan satu kidung selama ibadah
 - **Widget bar** — kidung yang sedang diputar, dengan kontrol klik dan scroll
 - **Offline** — lirik selalu offline; audio tersimpan otomatis begitu diputar,
   atau borong sekaligus dengan `kri download --all`
@@ -59,6 +61,7 @@ o.bind("SUPER + SHIFT + ALT + K", "Kidung play/pause", "omarchy-shell kri toggle
 | `Ctrl+Space` | putar / jeda |
 | `Ctrl+←` `Ctrl+→` | lompat bait sebelumnya / berikutnya |
 | `Ctrl+N` `Ctrl+P` | kidung berikutnya / sebelumnya |
+| `Ctrl+R` | ulang lagu on/off |
 | `Ctrl+K` | ikuti audio (auto-scroll) on/off |
 | `Ctrl+U` / `Backspace` | hapus pencarian |
 | `F11` / `Ctrl+F` | layar penuh on/off |
@@ -73,6 +76,7 @@ Di **layar penuh** pencarian tidak aktif, jadi tombol tak perlu `Ctrl`:
 | `Space` | putar / jeda |
 | `←` `→` `↑` `↓` | gulir lirik |
 | `Ctrl+←` `Ctrl+→` | lompat bait (seek audio) |
+| `R` | ulang lagu on/off |
 | `+` `−` | perbesar / perkecil lirik |
 | `0` | kembalikan ukuran |
 | `F11` / `Esc` | keluar dari layar penuh |
@@ -89,6 +93,7 @@ kri path 24              # path lokal, atau URL kalau belum di-cache
 kri doctor               # status cache, plugin, dan shell
 kri dev                  # pantau sumber plugin, restart shell tiap disimpan
 kri present [nomor]      # buka langsung ke tampilan layar penuh
+kri repeat [on|off]      # ulang lagu; tanpa argumen = toggle
 kri open | play <no> | toggle | next | prev
 ```
 

@@ -248,6 +248,8 @@ Item {
             if (root.service) root.service.previous()
           } else if (ctrl && event.key === Qt.Key_K) {
             root.followAudio = !root.followAudio
+          } else if (ctrl && event.key === Qt.Key_R) {
+            if (root.service) root.service.toggleRepeat()
           } else if (ctrl && event.key === Qt.Key_Right) {
             root.stepStanza(1)
           } else if (ctrl && event.key === Qt.Key_Left) {
@@ -271,6 +273,8 @@ Item {
               lyricList.flick(0, 700)
             } else if (event.key === Qt.Key_Space) {
               if (root.service) root.service.togglePlayback()
+            } else if (event.key === Qt.Key_R) {
+              if (root.service) root.service.toggleRepeat()
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
               root.playSelected()
             } else {
@@ -636,38 +640,56 @@ Item {
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 elide: Text.ElideRight
-                width: Math.max(0, parent.width - followLabel.width - presentLabel.width - Style.spacing.lg * 2)
+                width: Math.max(0, parent.width - toggles.width - Style.spacing.lg)
               }
 
-              Text {
-                id: followLabel
+              // Mode switches, dim when off and lit when on. Grouped so the
+              // status text above can size itself off one width.
+              Row {
+                id: toggles
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.followAudio ? "󰓾 ikuti audio" : "󰓾 bebas"
-                color: root.foreground
-                opacity: root.followAudio ? 0.8 : 0.35
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                spacing: Style.spacing.lg
 
-                MouseArea {
-                  anchors.fill: parent
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: root.followAudio = !root.followAudio
+                Text {
+                  text: root.service && root.service.repeatSong ? "󰑖 ulang" : "󰑗 ulang"
+                  color: root.foreground
+                  opacity: root.service && root.service.repeatSong ? 0.8 : 0.35
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (root.service) root.service.toggleRepeat()
+                  }
                 }
-              }
 
-              Text {
-                id: presentLabel
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.fullscreen ? "󰊓 layar penuh" : "󰊔 layar penuh"
-                color: root.foreground
-                opacity: root.fullscreen ? 0.8 : 0.35
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                Text {
+                  text: root.followAudio ? "󰓾 ikuti audio" : "󰓾 bebas"
+                  color: root.foreground
+                  opacity: root.followAudio ? 0.8 : 0.35
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
 
-                MouseArea {
-                  anchors.fill: parent
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: root.fullscreen = !root.fullscreen
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.followAudio = !root.followAudio
+                  }
+                }
+
+                Text {
+                  text: root.fullscreen ? "󰊓 layar penuh" : "󰊔 layar penuh"
+                  color: root.foreground
+                  opacity: root.fullscreen ? 0.8 : 0.35
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.fullscreen = !root.fullscreen
+                  }
                 }
               }
             }
@@ -675,8 +697,11 @@ Item {
             Text {
               width: parent.width
               text: root.fullscreen
-                ? "Space jeda · ←/→ gulir · Ctrl+←/→ bait · +/− ukuran · 0 reset · F11 keluar layar penuh"
-                : "↑↓ pilih · Enter putar · Ctrl+Space jeda · Ctrl+←/→ bait · Ctrl+N/P lagu · Ctrl+K ikuti · F11 layar penuh · Esc tutup"
+                ? "Space jeda · ←/→ gulir · Ctrl+←/→ bait · R ulang · +/− ukuran · 0 reset · F11 keluar layar penuh"
+                // Kept short enough not to elide: the toggle row above already
+                // shows repeat / follow / fullscreen state, so the hint only
+                // has to teach the keys you cannot click.
+                : "↑↓ pilih · Enter putar · Ctrl+Space jeda · Ctrl+←/→ bait · Ctrl+R ulang · F11 penuh · Esc tutup"
               color: root.foreground
               opacity: 0.35
               font.family: root.fontFamily
