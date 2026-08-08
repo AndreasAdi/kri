@@ -52,12 +52,19 @@ Item {
     songsFile.reload()
   }
 
+  // 63 of the 335 hymns have no recording. Refusing here — before anything
+  // moves — is what keeps the bar honest: it would otherwise name the new hymn
+  // while the previous one is still audible. Nothing is lost by refusing, since
+  // the overlay's lyric pane reads its own selection, not currentSong.
   function playIndex(index) {
     if (index < 0 || index >= songs.length) return
-    root.currentIndex = index
+    var song = songs[index]
+    if (!song.media) {
+      root.lastError = "KRI " + song.no + " belum ada audionya"
+      return
+    }
     root.lastError = ""
-    resolver.resolve(songs[index].no)
-    root.songActivated(index)
+    resolver.resolve(index)
   }
 
   function playNumber(number) {
@@ -66,10 +73,18 @@ Item {
     else root.lastError = "No hymn numbered " + number
   }
 
-  // Select without starting playback — used when browsing the overlay.
-  function showNumber(number) {
-    var index = Songs.indexOfNumber(songs, number)
-    if (index >= 0) root.currentIndex = index
+  // Transport, not browsing: the overlay's own up/down keys walk the whole list.
+  // Hymns without audio come in runs of up to nine, so stepping into one and
+  // going quiet would make the control feel broken — and since playIndex now
+  // refuses them without moving currentIndex, it would also get stuck there.
+  function stepPlayable(delta) {
+    if (songs.length === 0) return -1
+    var from = currentIndex >= 0 ? currentIndex : (delta > 0 ? -1 : 0)
+    for (var step = 1; step <= songs.length; step++) {
+      var index = ((from + delta * step) % songs.length + songs.length) % songs.length
+      if (songs[index].media) return index
+    }
+    return -1
   }
 
   function togglePlayback() {
@@ -87,13 +102,13 @@ Item {
   }
 
   function next() {
-    if (songs.length === 0) return
-    playIndex(currentIndex < 0 ? 0 : (currentIndex + 1) % songs.length)
+    var index = stepPlayable(1)
+    if (index >= 0) playIndex(index)
   }
 
   function previous() {
-    if (songs.length === 0) return
-    playIndex(currentIndex <= 0 ? songs.length - 1 : currentIndex - 1)
+    var index = stepPlayable(-1)
+    if (index >= 0) playIndex(index)
   }
 
   function seekSeconds(seconds) {
@@ -128,11 +143,13 @@ Item {
   Process {
     id: resolver
     property string pendingNumber: ""
+    property int pendingIndex: -1
 
-    function resolve(number) {
+    function resolve(index) {
       if (running) running = false
-      pendingNumber = number
-      command = ["bash", "-lc", root.kriBin + " path " + number]
+      pendingIndex = index
+      pendingNumber = root.songs[index].no
+      command = ["bash", "-lc", root.kriBin + " path " + pendingNumber]
       running = true
     }
 
@@ -144,9 +161,20 @@ Item {
           root.lastError = "Tidak ada audio untuk KRI " + resolver.pendingNumber
           return
         }
+        // Aborting an in-flight resolve can still flush its output, so check
+        // that what came back is what we last asked for. Both branches of
+        // `kri path` name the hymn: the cache file is KRI-<no>.mp3 and the
+        // upstream URL ends the same way.
+        if (source.indexOf("KRI-" + resolver.pendingNumber + ".") === -1) return
+
+        // The only place currentIndex moves, in the same block that replaces
+        // the audio. That pairing is the whole sync guarantee: the bar can
+        // never name one hymn while another is sounding.
+        root.currentIndex = resolver.pendingIndex
         root.lastError = ""
         player.source = source.indexOf("http") === 0 ? source : "file://" + source
         player.play()
+        root.songActivated(resolver.pendingIndex)
 
         if (root.cacheOnPlay && source.indexOf("http") === 0)
           Quickshell.execDetached(["bash", "-lc", root.kriBin + " download " + resolver.pendingNumber])
@@ -168,14 +196,16 @@ Item {
   IpcHandler {
     target: "kri"
 
-    // Resolution is async (it shells out to `kri path`), so this reports what it
-    // asked for rather than a playback state that has not settled yet.
+    // Resolution is async (it shells out to `kri path`), so this reports the
+    // hymn that was asked for — currentSong still names whatever is playing
+    // right now. A hymn without audio is refused synchronously, so that case
+    // does come back on this call.
     function play(number: string): string {
-      root.playNumber(number)
+      var index = Songs.indexOfNumber(root.songs, number)
+      if (index < 0) return "unknown hymn " + number
+      root.playIndex(index)
       if (root.lastError) return root.lastError
-      return root.currentSong
-        ? "KRI " + root.currentSong.no + " " + root.currentSong.title
-        : "unknown hymn " + number
+      return "KRI " + root.songs[index].no + " " + root.songs[index].title
     }
 
     function seek(seconds: string): string {

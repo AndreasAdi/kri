@@ -140,6 +140,11 @@ plus MP3 di `stor.grii.online`. Sekali sync menghasilkan 335 entri untuk 333
 nomor kidung — nomor 44 terbit dalam dua versi (`044e` Inggris, `044i`
 Indonesia) dan ada satu `238A`. 272 kidung punya audio, 270 punya timestamp bait.
 
+63 sisanya lirik saja. Memilihnya tetap menampilkan liriknya penuh, tapi tidak
+mengambil alih pemutar — kidung yang sedang berjalan terus berbunyi, karena bar
+hanya boleh menyebut apa yang benar-benar terdengar. `Ctrl+N`/`Ctrl+P` dan
+scroll di bar melompatinya; `↑`/`↓` di overlay tetap menyusuri semuanya.
+
 `sync.py` menulis secara atomik dan menolak menimpa cache yang sehat kalau
 hasil fetch mencurigakan, jadi upstream yang rusak tidak bisa merusak data lokal.
 Unduhan audio juga divalidasi (tipe MIME + ukuran) karena sebagian URL upstream

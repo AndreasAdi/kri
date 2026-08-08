@@ -485,6 +485,9 @@ Item {
               text: {
                 if (!root.previewSong) return ""
                 var bits = []
+                // First, not last: the tail of this line elides in a narrow
+                // window, and this is the one bit worth knowing before Enter.
+                if (!root.previewSong.media) bits.push("tanpa audio")
                 if (root.previewSong.keyTime) bits.push(root.previewSong.keyTime)
                 if (root.previewSong.hymnTune) bits.push(root.previewSong.hymnTune)
                 if (root.previewSong.lyric) bits.push("Lirik: " + root.previewSong.lyric)
