@@ -1,5 +1,8 @@
 # KRI — Kidung Reformed Injili untuk Omarchy
 
+*An Omarchy shell plugin for the 333 hymns of the Indonesian Reformed
+Evangelical Church: search, lyrics, and karaoke-style singalong.*
+
 Akses 333 kidung GRII langsung dari desktop: cari, baca lirik, dengarkan, dan
 ikuti nyanyian dengan sorotan bait yang bergerak mengikuti audio.
 
@@ -36,12 +39,22 @@ warna setiap kali tema Omarchy diganti.
 
 ## Instalasi
 
+Butuh Omarchy 4 atau lebih baru.
+
 ```bash
-git clone <repo> ~/Projects/kri
-cd ~/Projects/kri
-./bin/kri install                  # link plugin + CLI
-omarchy plugin enable andreas.kri right
-./bin/kri sync                     # unduh hymnal (~700 KB)
+omarchy plugin add https://github.com/AndreasAdi/kri.git --enable
+~/.config/omarchy/plugins/andreas.kri/bin/kri setup
+```
+
+`omarchy plugin add` meng-clone repo ini ke `~/.config/omarchy/plugins/andreas.kri/`
+dan menyalakan widget bar-nya. `kri setup` menautkan CLI ke `~/.local/bin` lalu
+mengunduh data kidungnya (~700 KB) — atau lewati saja dan tekan tombol **Unduh
+333 kidung** yang muncul di overlay saat pertama kali dibuka.
+
+Pembaruan lewat jalur yang sama:
+
+```bash
+omarchy plugin update andreas.kri
 ```
 
 Lalu tambahkan keybinding di `~/.config/hypr/bindings.lua`:
@@ -49,6 +62,19 @@ Lalu tambahkan keybinding di `~/.config/hypr/bindings.lua`:
 ```lua
 o.bind("SUPER + SHIFT + K", "Kidung Reformed Injili", "omarchy-shell shell toggle andreas.kri '{}'")
 o.bind("SUPER + SHIFT + ALT + K", "Kidung play/pause", "omarchy-shell kri toggle")
+```
+
+Opsional, baris menu di `~/.config/omarchy/extensions/omarchy-menu.jsonc`.
+Perhatikan bahwa baris menu dijalankan lewat `bash -lc` yang PATH-nya tidak
+memuat `~/.local/bin`, jadi panggil CLI-nya lewat path pluginnya langsung:
+
+```jsonc
+"kri": {"icon":"󰎇","label":"Kidung Reformed Injili","aliases":["kidung","hymn"]},
+"kri.open": {"icon":"󰍉","label":"Buka pencarian","action":"omarchy-shell shell toggle andreas.kri '{}'"},
+"kri.present": {"icon":"󰊔","label":"Layar penuh","action":"$HOME/.config/omarchy/plugins/andreas.kri/bin/kri present"},
+"kri.toggle": {"icon":"󰐊","label":"Putar / jeda","action":"omarchy-shell kri toggle"},
+"kri.repeat": {"icon":"󰑖","label":"Ulang lagu","action":"omarchy-shell kri repeat","checked":"omarchy-shell kri status | grep -q repeat"},
+"kri.download": {"icon":"󰇚","label":"Unduh semua audio","action":"$HOME/.config/omarchy/plugins/andreas.kri/bin/kri download --all"},
 ```
 
 ## Pintasan di dalam overlay
@@ -91,6 +117,7 @@ kri download --all       # cache seluruh audio (~1,6 GB, 272 lagu)
 kri download 001 044e    # cache lagu tertentu
 kri path 24              # path lokal, atau URL kalau belum di-cache
 kri doctor               # status cache, plugin, dan shell
+kri setup                # daftarkan plugin, tautkan CLI, ambil data kidung
 kri dev                  # pantau sumber plugin, restart shell tiap disimpan
 kri present [nomor]      # buka langsung ke tampilan layar penuh
 kri repeat [on|off]      # ulang lagu; tanpa argumen = toggle
@@ -117,21 +144,31 @@ otomatis jadi nomor-saja.
 
 ## Arsitektur
 
+Akar repo ini *adalah* folder pluginnya — begitulah `omarchy plugin add` bekerja:
+repo di-clone apa adanya ke `~/.config/omarchy/plugins/<id>/`, jadi
+`manifest.json` harus ada di akar dan tidak boleh ada symlink di dalamnya.
+
 ```
-bin/kri              CLI: sync, cache audio, resolusi path
-lib/sync.py          CSV Google Sheet → songs.json ternormalisasi
-plugin/
-  manifest.json      kinds: service + overlay + bar-widget
+manifest.json        kinds: service + overlay + bar-widget
+qml/
   Service.qml        singleton: data, MediaPlayer, jam karaoke, IPC target "kri"
   Overlay.qml        UI cari + lirik + kontrol
   BarWidget.qml      pill now-playing
   Songs.js           pencarian, normalisasi nomor, pemetaan cue → bait
+bin/kri              CLI: sync, cache audio, resolusi path
+lib/sync.py          CSV Google Sheet → songs.json ternormalisasi
 ```
 
 Pembagian kerjanya: Bash/Python mengurus jaringan dan disk, QML mengurus
 tampilan dan sinkronisasi audio. Service adalah satu-satunya pemilik state —
 overlay dan bar widget hanya membacanya, itulah sebabnya audio tetap jalan
 setelah overlay ditutup.
+
+CLI-nya ikut terbawa di dalam plugin, dan Service memanggilnya lewat path
+absolut yang diambil dari `manifest.__sourceDir` — bukan lewat `$PATH`.
+`omarchy plugin add` memang tidak punya cara memasang apa pun ke `$PATH`, jadi
+plugin yang bergantung padanya akan ter-install tapi tidak bisa memutar apa-apa.
+`~/.local/bin/kri` cuma kemudahan buat manusia.
 
 ### Sumber data
 
@@ -152,13 +189,30 @@ mengembalikan stub — `KRI-333.mp3` misalnya hanya 94 byte.
 
 ### Catatan pengembangan
 
-Sumbernya ada di repo ini; `~/.config/omarchy/plugins/andreas.kri` hanyalah
-symlink ke `plugin/`. Penemuan plugin mengikuti symlink, tetapi watcher inotify
-milik Omarchy tidak — dan `rescanPlugins` pun tidak cukup karena QML masih
-dilayani dari component cache Qt dan singleton `Service.qml` hanya dibuat sekali.
-Karena itu `kri dev` me-restart shell (~2 detik) setiap kali file disimpan.
+Untuk mengembangkan tanpa mengedit di dalam `~/.config/omarchy/plugins/`,
+clone ke mana saja lalu jalankan `./bin/kri setup`: ia menautkan
+`~/.config/omarchy/plugins/andreas.kri` ke checkout tersebut. Penemuan plugin
+mengikuti symlink, tetapi watcher inotify milik Omarchy tidak — dan
+`rescanPlugins` pun tidak cukup karena QML masih dilayani dari component cache
+Qt dan singleton `Service.qml` hanya dibuat sekali. Karena itu `kri dev`
+me-restart shell (~2 detik) setiap kali file disimpan.
 
-## Catatan
+`kri setup` tahu keduanya: kalau dijalankan dari checkout yang sudah berada di
+folder plugin (hasil `omarchy plugin add`), ia tidak menautkan apa pun.
 
-Data ini dipublikasikan GRII untuk diakses umum. Aplikasi ini untuk pemakaian
-pribadi; jangan distribusikan ulang berikut berkas audionya.
+Sebelum merilis, pastikan manifesnya lolos pemeriksaan yang sama dengan yang
+dipakai installer:
+
+```bash
+omarchy plugin validate .
+```
+
+## Lisensi dan hak cipta
+
+Kode di repo ini berlisensi MIT — lihat [LICENSE](LICENSE).
+
+Lirik, not, dan rekamannya adalah milik GRII dan **tidak** ikut di repo ini.
+Repo ini hanya berisi kode yang mengambilnya dari sumber publik GRII ke komputer
+yang menjalankannya, jadi memasang plugin ini tidak mendistribusikan ulang
+materi mereka — dan berkas audio yang sudah ter-cache di `~/.local/share/kri/`
+juga jangan disebarkan.

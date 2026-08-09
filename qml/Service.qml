@@ -42,14 +42,29 @@ Item {
 
   property string lastError: ""
 
-  // `kri install` puts the CLI in ~/.local/bin, but a login shell spawned from
-  // the compositor does not necessarily have that on PATH — so put it there.
-  readonly property string kriBin: "PATH=\"$HOME/.local/bin:$PATH\"; kri"
+  readonly property bool syncing: syncer.running
+
+  // The CLI ships inside this plugin, so call it by absolute path rather than
+  // hoping for a PATH. `omarchy plugin add` has no way to install anything into
+  // one, and menu rows run under a login shell that lacks ~/.local/bin anyway.
+  // The registry stamps __sourceDir onto every manifest; Qt.resolvedUrl covers
+  // the case where the manifest was not injected.
+  readonly property string pluginDir: (manifest && manifest.__sourceDir)
+    ? String(manifest.__sourceDir).replace(/\/$/, "")
+    : String(Qt.resolvedUrl("..")).replace(/^file:\/\//, "").replace(/\/$/, "")
+  readonly property string kriBin: pluginDir + "/bin/kri"
 
   signal songActivated(int index)
 
   function reload() {
     songsFile.reload()
+  }
+
+  // First run has no hymnal, so the overlay offers to fetch one. Nothing needs
+  // to be reloaded afterwards: songsFile watches the file and sync.py writes
+  // atomically, so a successful sync shows up on its own.
+  function sync() {
+    if (!syncer.running) syncer.running = true
   }
 
   // 63 of the 335 hymns have no recording. Refusing here — before anything
@@ -135,7 +150,9 @@ Item {
     watchChanges: true
     onLoaded: root.songs = Songs.parse(text())
     onFileChanged: reload()
-    onLoadFailed: root.lastError = "Hymnal not cached yet — run 'kri sync'"
+    // Not an error worth shouting about on first run: the overlay's empty state
+    // offers the download, so leave the message out of the status line.
+    onLoadFailed: root.songs = []
   }
 
   // `kri path` decides between the cached file and the upstream URL; keeping
@@ -149,7 +166,7 @@ Item {
       if (running) running = false
       pendingIndex = index
       pendingNumber = root.songs[index].no
-      command = ["bash", "-lc", root.kriBin + " path " + pendingNumber]
+      command = [root.kriBin, "path", pendingNumber]
       running = true
     }
 
@@ -177,7 +194,19 @@ Item {
         root.songActivated(resolver.pendingIndex)
 
         if (root.cacheOnPlay && source.indexOf("http") === 0)
-          Quickshell.execDetached(["bash", "-lc", root.kriBin + " download " + resolver.pendingNumber])
+          Quickshell.execDetached([root.kriBin, "download", resolver.pendingNumber])
+      }
+    }
+  }
+
+  Process {
+    id: syncer
+    command: [root.kriBin, "sync"]
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var message = String(text || "").trim()
+        if (message) root.lastError = message.replace(/^kri: /, "")
       }
     }
   }
@@ -254,6 +283,7 @@ Item {
     // Diagnostics: last playback/resolution error, and whether the hymnal loaded.
     function diag(): string {
       return "songs=" + root.songs.length
+        + " cli=" + root.kriBin
         + " source=" + player.source
         + " state=" + player.playbackState
         + " status=" + player.mediaStatus

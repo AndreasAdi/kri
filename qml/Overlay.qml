@@ -338,7 +338,7 @@ Item {
             anchors.top: searchLine.bottom
             anchors.left: parent.left
             text: root.songs.length === 0
-              ? "Belum ada data — jalankan 'kri sync'"
+              ? (root.service && root.service.syncing ? "Mengunduh data kidung…" : "Belum ada data")
               : root.results.length + " dari " + root.songs.length + " kidung"
             color: root.foreground
             opacity: 0.5
@@ -731,7 +731,7 @@ Item {
 
             Text {
               text: root.songs.length === 0
-                ? "Jalankan 'kri sync' untuk mengunduh 333 kidung"
+                ? "Belum ada data kidung di komputer ini"
                 : "Tidak ada kidung yang cocok"
               color: root.foreground
               opacity: 0.6
@@ -739,6 +739,40 @@ Item {
               font.pixelSize: Style.font.title
               horizontalAlignment: Text.AlignHCenter
               width: parent.width
+            }
+
+            // First run has nothing to search, and telling someone to go find a
+            // terminal is a poor welcome — so the empty state does the fetch
+            // itself. The list fills in on its own once songs.json lands.
+            Rectangle {
+              anchors.horizontalCenter: parent.horizontalCenter
+              width: syncLabel.implicitWidth + Style.spacing.controlPaddingX * 4
+              height: Math.max(Style.spacing.controlHeight, Style.font.subtitle * 2.4)
+              radius: root.cornerRadius
+              visible: root.songs.length === 0
+              color: root.selectedBackground
+              opacity: root.service && root.service.syncing ? 0.5
+                : (syncMouse.containsMouse ? 1.0 : 0.85)
+
+              Text {
+                id: syncLabel
+                anchors.centerIn: parent
+                text: root.service && root.service.syncing
+                  ? "󰇚 Mengunduh…"
+                  : "󰇚 Unduh 333 kidung"
+                color: root.selectedText
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.subtitle
+              }
+
+              MouseArea {
+                id: syncMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: root.service && !root.service.syncing
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.service.sync()
+              }
             }
           }
         }

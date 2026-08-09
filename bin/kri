@@ -17,7 +17,7 @@ DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/kri"
 AUDIO_DIR="$DATA_DIR/audio"
 SONGS="$DATA_DIR/songs.json"
 PLUGIN_ID="andreas.kri"
-PLUGIN_LINK="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
+PLUGIN_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
 
 # A truncated or HTML error response is always well under this.
 MIN_AUDIO_BYTES=100000
@@ -209,11 +209,18 @@ PY
     echo "hymnal     : not synced — run 'kri sync'"
   fi
 
-  if [[ -e $PLUGIN_LINK ]]; then
-    echo "plugin     : installed -> $(readlink -f "$PLUGIN_LINK")"
+  if [[ ! -e $PLUGIN_DIR ]]; then
+    echo "plugin     : not installed — run 'kri setup'"
+  elif [[ -L $PLUGIN_DIR ]]; then
+    echo "plugin     : dev checkout -> $(readlink -f "$PLUGIN_DIR")"
   else
-    echo "plugin     : not installed — run 'kri install'"
+    echo "plugin     : installed at $PLUGIN_DIR"
   fi
+  echo "cli        : $ROOT/bin/kri"
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) echo "             (~/.local/bin is not on PATH — the plugin does not care, you might)" ;;
+  esac
   if omarchy-shell shell ping >/dev/null 2>&1; then
     echo "shell      : running"
   else
@@ -221,25 +228,57 @@ PY
   fi
 }
 
-cmd_install() {
-  mkdir -p "$(dirname "$PLUGIN_LINK")" "$HOME/.local/bin"
-  ln -sfn "$ROOT/plugin" "$PLUGIN_LINK"
+# Two shapes reach here. `omarchy plugin add` clones the repo straight into the
+# plugins directory, and then $ROOT already is the plugin — there is nothing to
+# link. A development checkout lives anywhere and gets symlinked in. Plugin
+# discovery follows a symlinked plugin directory; only symlinks *inside* one are
+# refused, and a dev checkout is never validated.
+cmd_setup() {
+  mkdir -p "$(dirname "$PLUGIN_DIR")" "$HOME/.local/bin"
+
+  if [[ $ROOT -ef $PLUGIN_DIR ]]; then
+    echo "kri: plugin installed at $PLUGIN_DIR"
+  else
+    ln -sfn "$ROOT" "$PLUGIN_DIR"
+    echo "kri: linked $PLUGIN_DIR -> $ROOT"
+  fi
+
+  # Only a convenience now — the plugin calls $ROOT/bin/kri by absolute path, so
+  # nothing breaks if this is missing or shadowed.
   ln -sfn "$ROOT/bin/kri" "$HOME/.local/bin/kri"
-  echo "kri: linked $PLUGIN_LINK -> $ROOT/plugin"
+  echo "kri: linked $HOME/.local/bin/kri"
+
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
-  echo "kri: now run 'omarchy plugin enable $PLUGIN_ID'"
+
+  if [[ ! -f $SONGS ]]; then
+    cmd_sync
+  fi
+
+  cat <<EOF
+
+kri: siap. Aktifkan widget bar dan tambahkan pintasannya:
+
+  omarchy plugin enable $PLUGIN_ID right
+
+  # ~/.config/hypr/bindings.lua
+  o.bind("SUPER + SHIFT + K", "Kidung Reformed Injili", "omarchy-shell shell toggle $PLUGIN_ID '{}'")
+  o.bind("SUPER + SHIFT + ALT + K", "Kidung play/pause", "omarchy-shell kri toggle")
+
+Baris menu opsional untuk ~/.config/omarchy/extensions/omarchy-menu.jsonc ada di README.
+EOF
 }
 
-# Omarchy's own inotify watcher does not recurse into the symlinked plugin dir,
-# so edits here go unnoticed. `rescanPlugins` is not enough either: it re-reads
-# manifests but serves QML from Qt's component cache, and the service singleton
-# is only ever constructed once. Restarting the shell is the reliable reload.
+# Omarchy's own inotify watcher does not recurse into a symlinked plugin dir, so
+# edits in a dev checkout go unnoticed. `rescanPlugins` is not enough either: it
+# re-reads manifests but serves QML from Qt's component cache, and the service
+# singleton is only ever constructed once. Restarting the shell is the reliable
+# reload.
 cmd_dev() {
   command -v inotifywait >/dev/null || die "inotify-tools not installed"
-  echo "kri: watching $ROOT/plugin — saving a file restarts omarchy-shell (~2s)"
-  while inotifywait -qq -r -e close_write,create,delete,move "$ROOT/plugin"; do
+  echo "kri: watching $ROOT/qml — saving a file restarts omarchy-shell (~2s)"
+  while inotifywait -qq -r -e close_write,create,delete,move "$ROOT/qml"; do
     # Coalesce editor write bursts (swap files, atomic rename) into one restart.
-    while inotifywait -qq -t 1 -r -e close_write,create,delete,move "$ROOT/plugin"; do :; done
+    while inotifywait -qq -t 1 -r -e close_write,create,delete,move "$ROOT/qml"; do :; done
     omarchy-restart-shell >/dev/null 2>&1 || true
     echo "kri: shell restarted $(date +%H:%M:%S)"
   done
@@ -254,7 +293,7 @@ kri — Kidung Reformed Injili
   kri download 001 002     Cache specific hymns
   kri path <number>        Local file if cached, otherwise the streaming URL
   kri doctor               Report cache, plugin and shell status
-  kri install              Link the plugin into Omarchy and kri into ~/.local/bin
+  kri setup                Register the plugin, link the CLI, fetch the hymnal
   kri dev                  Watch plugin sources and restart the shell on save
 
   kri open                 Toggle the overlay
@@ -273,7 +312,7 @@ main() {
     download) cmd_download "$@" ;;
     path)     cmd_path "$@" ;;
     doctor)   cmd_doctor "$@" ;;
-    install)  cmd_install "$@" ;;
+    setup|install) cmd_setup "$@" ;;
     dev)      cmd_dev "$@" ;;
     open)     omarchy-shell shell toggle "$PLUGIN_ID" '{}' ;;
     present)  cmd_present "$@" ;;
