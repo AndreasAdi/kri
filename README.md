@@ -139,8 +139,23 @@ omarchy bar set andreas.kri maxLabelWidth 300     # semua judul tampil utuh
 ```
 
 Default `maxLabelWidth` 240px memuat ~33 karakter — 324 dari 335 judul (97%)
-tampil utuh. Perubahan langsung terlihat tanpa restart shell. Bar vertikal
-otomatis jadi nomor-saja.
+tampil utuh. Perubahan langsung terlihat tanpa restart shell.
+
+### Bar vertikal
+
+Di bar kiri/kanan hanya ada lebar 28px, jadi widget-nya berputar: not balok di
+atas, nomor kidung di bawahnya, plus ikon ulang kalau lagi dilooping. Judulnya
+tidak muat dalam bentuk apa pun, jadi ia tinggal di tooltip. Nomor diukur dan
+diperkecil seperlunya, sehingga `044e` — nomor terpanjang di hymnal — tetap
+muat utuh berapa pun ukuran font bar-nya.
+
+```bash
+omarchy bar set andreas.kri verticalDisplay icon     # not balok saja
+omarchy bar set andreas.kri verticalDisplay number   # default: not + nomor
+```
+
+Layar penuh menutupi bar di posisi mana pun ia berada — overlay-nya satu lapis
+di atas bar — jadi lirik memakai seluruh layar, bukan menyisakan pita kosong.
 
 ## Arsitektur
 

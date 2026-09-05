@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "andreas.kri",
   "name": "Kidung Reformed Injili",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Andreas Adi",
   "license": "MIT",
   "description": "Search, read and sing along to the 333 KRI hymns, offline",
@@ -25,7 +25,8 @@
     "defaultSection": "right",
     "defaults": {
       "titleDisplay": "elide",
-      "maxLabelWidth": 240
+      "maxLabelWidth": 240,
+      "verticalDisplay": "number"
     },
     "schema": [
       {
@@ -41,6 +42,13 @@
         "label": "Max title width",
         "description": "Pixels before the title is truncated. The hymn number is never truncated. 240 fits about 33 characters, showing 97% of hymn titles in full.",
         "defaultValue": 240
+      },
+      {
+        "key": "verticalDisplay",
+        "type": "string",
+        "label": "Vertical bar display",
+        "description": "On a left or right bar: \"number\" stacks the note glyph over the hymn number; \"icon\" shows the glyph alone. No title fits a 28px bar either way, so it stays in the tooltip.",
+        "defaultValue": "number"
       }
     ]
   }

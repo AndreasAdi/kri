@@ -57,9 +57,6 @@ Item {
   property int sidebarWidth: fullscreen ? 0 : Math.min(Style.space(330), Math.round(cardWidth * 0.34))
   property int rowHeight: Math.max(Style.space(38), Style.font.subtitle * 2.6)
 
-  // Omarchy's bar sits on the same layer and keeps drawing over us, so keep the
-  // top of a fullscreen display clear of it.
-  readonly property int topInset: fullscreen ? Style.bar.sizeHorizontal + Style.spacing.md : 0
   readonly property int lyricFontSize: Math.round((fullscreen ? Style.font.displayLarge : Style.font.title) * lyricScale)
   readonly property int headingFontSize: Math.round(fullscreen ? Style.font.display : Style.font.heading)
   // Cap the measure on a wide screen: full-width lines are hard to track back
@@ -188,6 +185,11 @@ Item {
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "kri"
+    // Above the bar's layer (WlrLayer.Top), which is what the menu and emoji
+    // pickers do too — so a fullscreen hymn covers the bar whichever edge it
+    // is on, and no edge needs clearance reserved for it. A vertical bar is
+    // the case that makes the difference visible: clearance sized for a top
+    // bar would indent the wrong edge of the display.
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
@@ -213,7 +215,6 @@ Item {
       color: root.background
       borderSpec: root.fullscreen ? Border.none() : root.borderSpec
       padding: root.contentMargin
-      topPadding: root.contentMargin + root.topInset
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
